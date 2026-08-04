@@ -7,7 +7,7 @@ pub struct CommandSpec {
 
 #[derive(Debug)]
 pub enum CommandError {
-    IoError(std::io::Error)
+    IoError(std::io::Error),
 }
 
 impl From<std::io::Error> for CommandError {
@@ -23,6 +23,5 @@ pub struct CommandOutput {
 }
 
 pub trait CommandRunner {
-    fn run(&self, command: &CommandSpec, directory: &Path)
-    -> Result<CommandOutput, CommandError>;
+    fn run(&self, command: &CommandSpec, directory: &Path) -> Result<CommandOutput, CommandError>;
 }

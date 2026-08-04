@@ -40,12 +40,10 @@ impl Execution<NeedsPull> {
         let execution = runner.run(&command, &self.directory)?;
 
         if execution.status != Some(0) {
-            return Err(
-                ExecutionError::CommandFailed { 
-                    status: execution.status,
-                    stderr: execution.stderr 
-                }
-            )
+            return Err(ExecutionError::CommandFailed {
+                status: execution.status,
+                stderr: execution.stderr,
+            });
         }
 
         Ok(())
@@ -157,18 +155,15 @@ mod tests {
             _command: &CommandSpec,
             _directory: &Path,
         ) -> Result<CommandOutput, CommandError> {
-            Ok(CommandOutput {
-                status: Some(1),
-                stdout: String::new(),
-                stderr: "git failed".into(),
-            })
+            Err(CommandError::IoError(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "git executable not found",
+            )))
         }
     }
-
     #[test]
     fn pull_propagates_runner_error() {
-        let path = std::env::temp_dir()
-            .join("rs_repo_manager_pull_propagates_runner_error");
+        let path = std::env::temp_dir().join("rs_repo_manager_pull_propagates_runner_error");
 
         let _ = fs::remove_dir_all(&path);
         fs::create_dir_all(&path).unwrap();
@@ -179,7 +174,10 @@ mod tests {
 
         let result = execution.pull(&runner);
 
-        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(ExecutionError::CommandError(CommandError::IoError(_)))
+        ));
 
         fs::remove_dir_all(&path).unwrap();
     }
@@ -200,11 +198,9 @@ mod tests {
         }
     }
 
-
     #[test]
     fn pull_rejects_unsuccessful_command_output() {
-        let path = std::env::temp_dir()
-            .join("rs_repo_manager_pull_rejects_unsuccessful_output");
+        let path = std::env::temp_dir().join("rs_repo_manager_pull_rejects_unsuccessful_output");
 
         let _ = fs::remove_dir_all(&path);
         fs::create_dir_all(&path).unwrap();

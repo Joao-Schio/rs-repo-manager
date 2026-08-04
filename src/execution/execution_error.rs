@@ -10,7 +10,7 @@ pub enum ExecutionError {
 
     CommandFailed { status: Option<i32>, stderr: String },
 
-    CommandError(CommandError)
+    CommandError(CommandError),
 }
 
 impl From<std::io::Error> for ExecutionError {
