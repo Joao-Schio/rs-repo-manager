@@ -27,11 +27,7 @@ impl FakeCommandRunner {
 }
 
 impl CommandRunner for FakeCommandRunner {
-    fn run(
-        &self,
-        command: &CommandSpec,
-        directory: &Path,
-    ) -> Result<CommandOutput, CommandError> {
+    fn run(&self, command: &CommandSpec, directory: &Path) -> Result<CommandOutput, CommandError> {
         self.commands.borrow_mut().push(RecordedCommand {
             program: command.program.clone(),
             args: command.args.clone(),
@@ -231,11 +227,7 @@ impl UpToDateCommandRunner {
 }
 
 impl CommandRunner for UpToDateCommandRunner {
-    fn run(
-        &self,
-        command: &CommandSpec,
-        directory: &Path,
-    ) -> Result<CommandOutput, CommandError> {
+    fn run(&self, command: &CommandSpec, directory: &Path) -> Result<CommandOutput, CommandError> {
         self.commands.borrow_mut().push(RecordedCommand {
             program: command.program.clone(),
             args: command.args.clone(),
@@ -343,8 +335,34 @@ fn updated_pull_returns_execution_ready_for_deployment() {
 
 #[test]
 fn deploy_runs_docker_compose_up_in_repository_directory() {
-    let path = std::env::temp_dir()
-        .join("rs_repo_manager_deploy_runs_compose_up");
+    let path = std::env::temp_dir().join("rs_repo_manager_deploy_runs_compose_up");
+
+    let _ = fs::remove_dir_all(&path);
+    fs::create_dir_all(&path).unwrap();
+
+    let execution = Execution::<NeedsDeploy> {
+        state: PhantomData,
+        directory: path.clone(),
+    };
+
+    let runner = FakeCommandRunner::new();
+    let fake_plan = DeploymentPlan { compose_down: false, before_down: vec![] };
+
+    execution.deploy(&runner, &fake_plan).unwrap();
+
+    let commands = runner.commands.borrow();
+
+    assert_eq!(commands.len(), 1);
+    assert_eq!(commands[0].program, "docker");
+    assert_eq!(commands[0].args, vec!["compose", "up", "-d", "--build"]);
+    assert_eq!(commands[0].directory, path);
+
+    fs::remove_dir_all(&path).unwrap();
+}
+
+#[test]
+fn deploy_runs_compose_down_before_up_when_enabled() {
+    let path = std::env::temp_dir().join("rs_repo_manager_deploy_runs_compose_down");
 
     let _ = fs::remove_dir_all(&path);
     fs::create_dir_all(&path).unwrap();
@@ -356,17 +374,24 @@ fn deploy_runs_docker_compose_up_in_repository_directory() {
 
     let runner = FakeCommandRunner::new();
 
-    execution.deploy(&runner).unwrap();
+    let plan = DeploymentPlan {
+        compose_down: true,
+        before_down: vec![],
+    };
+
+    execution.deploy(&runner, &plan).unwrap();
 
     let commands = runner.commands.borrow();
 
-    assert_eq!(commands.len(), 1);
+    assert_eq!(commands.len(), 2);
+
     assert_eq!(commands[0].program, "docker");
-    assert_eq!(
-        commands[0].args,
-        vec!["compose", "up", "-d", "--build"]
-    );
-    assert_eq!(commands[0].directory, path);
+    assert_eq!(commands[0].args, vec!["compose", "down"]);
+
+    assert_eq!(commands[1].program, "docker");
+    assert_eq!(commands[1].args, vec!["compose", "up", "-d", "--build"]);
+
+    assert!(commands.iter().all(|command| { command.directory == path }));
 
     fs::remove_dir_all(&path).unwrap();
 }

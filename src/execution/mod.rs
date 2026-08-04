@@ -77,27 +77,53 @@ impl Execution<NeedsPull> {
     }
 }
 
+pub struct DeploymentPlan {
+    pub before_down: Vec<CommandSpec>,
+    pub compose_down: bool,
+}
+
 impl Execution<NeedsDeploy> {
     pub fn deploy<R: CommandRunner>(
         self,
         runner: &R,
+        plan: &DeploymentPlan,
     ) -> Result<(), ExecutionError> {
+        if plan.compose_down {
+            let compose_down_command = CommandSpec {
+                program: "docker".into(),
+                args: vec![
+                    "compose".into(),
+                    "down".into(),
+                ],
+            };
+
+            Self::check_command(
+                runner.run(
+                    &compose_down_command,
+                    &self.directory,
+                )?
+            )?;
+        }
+
         let compose_up_command = CommandSpec {
             program: "docker".into(),
             args: vec![
                 "compose".into(),
                 "up".into(),
                 "-d".into(),
-                "--build".into()
-            ]
+                "--build".into(),
+            ],
         };
-        let compose_up_output = Self::check_command(
-            runner.run(&compose_up_command, &self.directory)?
+
+        Self::check_command(
+            runner.run(
+                &compose_up_command,
+                &self.directory,
+            )?
         )?;
-        
+
         Ok(())
     }
 }
-
 #[cfg(test)]
 mod tests;
