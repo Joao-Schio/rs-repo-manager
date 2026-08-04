@@ -4,8 +4,7 @@ use std::{
 };
 
 use crate::{
-    command::{CommandRunner, CommandSpec},
-    execution::execution_error::ExecutionError,
+    command::{CommandOutput, CommandRunner, CommandSpec}, execution::execution_error::ExecutionError,
 };
 
 pub mod execution_error;
@@ -31,20 +30,37 @@ impl Execution<NeedsPull> {
         })
     }
 
+    #[inline(always)]
+    fn check_command(command : CommandOutput) -> Result<(), ExecutionError> {
+        if command.status != Some(0) {
+            return Err(ExecutionError::CommandFailed { 
+                    status: command.status, 
+                    stderr: command.stderr 
+                }
+            );
+        }
+        return Ok(())
+    }
+
     pub fn pull<R: CommandRunner>(self, runner: &R) -> Result<(), ExecutionError> {
-        let command = CommandSpec {
+        let head_command = CommandSpec {
+            program : "git".into(),
+            args: vec![
+                "rev-parse".into(),
+                "HEAD".into()
+            ]
+        };
+        
+        let head_output = runner.run(&head_command, &self.directory)?;
+        Self::check_command(head_output)?;
+
+        let pull_command = CommandSpec {
             program: "git".into(),
             args: vec!["pull".into()],
         };
 
-        let execution = runner.run(&command, &self.directory)?;
-
-        if execution.status != Some(0) {
-            return Err(ExecutionError::CommandFailed {
-                status: execution.status,
-                stderr: execution.stderr,
-            });
-        }
+        let pull_execution = runner.run(&pull_command, &self.directory)?;
+        Self::check_command(pull_execution)?;
 
         Ok(())
     }
@@ -129,23 +145,23 @@ mod tests {
     fn pull_runs_git_pull_in_repository_directory() {
         let path = std::env::temp_dir()
             .join("rs_repo_manager_pull_runs_git_pull");
-    
+
         let _ = fs::remove_dir_all(&path);
         fs::create_dir_all(&path).unwrap();
-    
+
         let execution = Execution::<NeedsPull>::new(&path).unwrap();
         let runner = FakeCommandRunner::new();
-    
+
         execution.pull(&runner).unwrap();
-    
+
         let commands = runner.commands.borrow();
-    
+
         assert!(commands.iter().any(|command| {
             command.program == "git"
                 && command.args == vec!["pull"]
                 && command.directory == path
         }));
-    
+
         fs::remove_dir_all(&path).unwrap();
     }
     struct FailingCommandRunner;
@@ -219,6 +235,39 @@ mod tests {
                 ..
             })
         ));
+
+        fs::remove_dir_all(&path).unwrap();
+    }
+
+
+    #[test]
+    fn pull_reads_head_before_git_pull() {
+        let path = std::env::temp_dir()
+            .join("rs_repo_manager_pull_reads_head_before_pull");
+
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+
+        let execution = Execution::<NeedsPull>::new(&path).unwrap();
+        let runner = FakeCommandRunner::new();
+
+        execution.pull(&runner).unwrap();
+
+        let commands = runner.commands.borrow();
+
+        assert_eq!(commands.len(), 2);
+
+        assert_eq!(commands[0].program, "git");
+        assert_eq!(
+            commands[0].args,
+            vec!["rev-parse", "HEAD"]
+        );
+
+        assert_eq!(commands[1].program, "git");
+        assert_eq!(
+            commands[1].args,
+            vec!["pull"]
+        );
 
         fs::remove_dir_all(&path).unwrap();
     }
