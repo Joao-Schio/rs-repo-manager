@@ -1,10 +1,6 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::execution::execution_error::ExecutionError;
-#[cfg(test)]
-pub mod fake_runner;
-#[cfg(test)]
-pub mod command_tests;
 
 pub struct CommandSpec {
     pub program: String,
@@ -16,14 +12,6 @@ pub struct CommandOutput {
     pub stdout: String,
     pub stderr: String,
 }
-
-#[derive(Debug)]
-struct RecordedCommand {
-    program: String,
-    args: Vec<String>,
-    directory: PathBuf,
-}
-
 
 pub trait CommandRunner {
     fn run(
