@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    command::{CommandOutput, CommandRunner, CommandSpec}, execution::{PullOutcome::UpToDate, execution_error::ExecutionError},
+    command::{CommandOutput, CommandRunner, CommandSpec}, execution::{PullOutcome::{UpToDate, Updated}, execution_error::ExecutionError},
 };
 
 pub mod execution_error;
@@ -12,6 +12,7 @@ pub mod execution_error;
 pub struct NeedsPull;
 pub enum PullOutcome {
     UpToDate,
+    Updated
 }
 
 pub struct Execution<State> {
@@ -66,9 +67,10 @@ impl Execution<NeedsPull> {
             runner.run(&head_command, &self.directory)?
         )?;
 
-        Ok(
-            UpToDate
-        )
+        if head_before_output.stdout.trim() == head_after_output.stdout.trim() {
+            return Ok(UpToDate)
+        }
+        return Ok(Updated)
     }
 }
 
@@ -332,6 +334,7 @@ mod tests {
             })
         }
     }
+
     #[test]
     fn pull_reports_up_to_date_when_head_does_not_change() {
         let path = std::env::temp_dir()
