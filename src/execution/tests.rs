@@ -346,7 +346,10 @@ fn deploy_runs_docker_compose_up_in_repository_directory() {
     };
 
     let runner = FakeCommandRunner::new();
-    let fake_plan = DeploymentPlan { compose_down: false, before_down: vec![] };
+    let fake_plan = DeploymentPlan {
+        compose_down: false,
+        after_pull: vec![],
+    };
 
     execution.deploy(&runner, &fake_plan).unwrap();
 
@@ -376,7 +379,7 @@ fn deploy_runs_compose_down_before_up_when_enabled() {
 
     let plan = DeploymentPlan {
         compose_down: true,
-        before_down: vec![],
+        after_pull: vec![],
     };
 
     execution.deploy(&runner, &plan).unwrap();
@@ -390,6 +393,48 @@ fn deploy_runs_compose_down_before_up_when_enabled() {
 
     assert_eq!(commands[1].program, "docker");
     assert_eq!(commands[1].args, vec!["compose", "up", "-d", "--build"]);
+
+    assert!(commands.iter().all(|command| { command.directory == path }));
+
+    fs::remove_dir_all(&path).unwrap();
+}
+
+#[test]
+fn deploy_runs_after_pull_commands_before_compose_down() {
+    let path = std::env::temp_dir().join("rs_repo_manager_after_pull_before_down");
+
+    let _ = fs::remove_dir_all(&path);
+    fs::create_dir_all(&path).unwrap();
+
+    let execution = Execution::<NeedsDeploy> {
+        state: PhantomData,
+        directory: path.clone(),
+    };
+
+    let runner = FakeCommandRunner::new();
+
+    let plan = DeploymentPlan {
+        after_pull: vec![CommandSpec {
+            program: "echo".into(),
+            args: vec!["hello".into()],
+        }],
+        compose_down: true,
+    };
+
+    execution.deploy(&runner, &plan).unwrap();
+
+    let commands = runner.commands.borrow();
+
+    assert_eq!(commands.len(), 3);
+
+    assert_eq!(commands[0].program, "echo");
+    assert_eq!(commands[0].args, vec!["hello"]);
+
+    assert_eq!(commands[1].program, "docker");
+    assert_eq!(commands[1].args, vec!["compose", "down"]);
+
+    assert_eq!(commands[2].program, "docker");
+    assert_eq!(commands[2].args, vec!["compose", "up", "-d", "--build"]);
 
     assert!(commands.iter().all(|command| { command.directory == path }));
 
