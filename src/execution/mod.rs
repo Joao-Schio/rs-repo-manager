@@ -4,15 +4,20 @@ use std::{
 };
 
 use crate::{
-    command::{CommandOutput, CommandRunner, CommandSpec}, execution::{PullOutcome::{UpToDate, Updated}, execution_error::ExecutionError},
+    command::{CommandOutput, CommandRunner, CommandSpec},
+    execution::{
+        PullOutcome::{UpToDate, Updated},
+        execution_error::ExecutionError,
+    },
 };
 
 pub mod execution_error;
 
 pub struct NeedsPull;
+pub struct NeedsDeploy;
 pub enum PullOutcome {
     UpToDate,
-    Updated
+    Updated(Execution<NeedsDeploy>),
 }
 
 pub struct Execution<State> {
@@ -44,33 +49,30 @@ impl Execution<NeedsPull> {
         return Ok(command);
     }
 
-    pub fn pull<R: CommandRunner>(self,runner: &R,) -> Result<PullOutcome, ExecutionError> {
+    pub fn pull<R: CommandRunner>(self, runner: &R) -> Result<PullOutcome, ExecutionError> {
         let head_command = CommandSpec {
             program: "git".into(),
             args: vec!["rev-parse".into(), "HEAD".into()],
         };
 
-        let head_before_output = Self::check_command(
-            runner.run(&head_command, &self.directory)?
-        )?;
+        let head_before_output = Self::check_command(runner.run(&head_command, &self.directory)?)?;
 
         let pull_command = CommandSpec {
             program: "git".into(),
             args: vec!["pull".into()],
         };
 
-        let pull_output = Self::check_command(
-            runner.run(&pull_command, &self.directory)?
-        )?;
-        
-        let head_after_output = Self::check_command(
-            runner.run(&head_command, &self.directory)?
-        )?;
+        let _ = Self::check_command(runner.run(&pull_command, &self.directory)?)?;
+
+        let head_after_output = Self::check_command(runner.run(&head_command, &self.directory)?)?;
 
         if head_before_output.stdout.trim() == head_after_output.stdout.trim() {
-            return Ok(UpToDate)
+            return Ok(UpToDate);
         }
-        return Ok(Updated)
+        return Ok(PullOutcome::Updated(Execution {
+            state: PhantomData,
+            directory: self.directory,
+        }));
     }
 }
 
@@ -337,8 +339,7 @@ mod tests {
 
     #[test]
     fn pull_reports_up_to_date_when_head_does_not_change() {
-        let path = std::env::temp_dir()
-            .join("rs_repo_manager_pull_reports_up_to_date");
+        let path = std::env::temp_dir().join("rs_repo_manager_pull_reports_up_to_date");
 
         let _ = fs::remove_dir_all(&path);
         fs::create_dir_all(&path).unwrap();
@@ -348,10 +349,70 @@ mod tests {
 
         let result = execution.pull(&runner).unwrap();
 
-        assert!(matches!(
-            result,
-            PullOutcome::UpToDate
-        ));
+        assert!(matches!(result, PullOutcome::UpToDate));
+
+        fs::remove_dir_all(&path).unwrap();
+    }
+
+    struct UpdatedCommandRunner {
+        invocation: RefCell<usize>,
+    }
+
+    impl UpdatedCommandRunner {
+        fn new() -> Self {
+            Self {
+                invocation: RefCell::new(0),
+            }
+        }
+    }
+
+    impl CommandRunner for UpdatedCommandRunner {
+        fn run(
+            &self,
+            _command: &CommandSpec,
+            _directory: &Path,
+        ) -> Result<CommandOutput, CommandError> {
+            let mut invocation = self.invocation.borrow_mut();
+
+            let stdout = match *invocation {
+                0 => "abc123\n",
+                1 => "",
+                2 => "def456\n",
+                _ => panic!("unexpected command"),
+            };
+
+            *invocation += 1;
+
+            Ok(CommandOutput {
+                status: Some(0),
+                stdout: stdout.into(),
+                stderr: String::new(),
+            })
+        }
+    }
+
+    fn assert_needs_deploy(_execution: &Execution<NeedsDeploy>) {}
+
+    #[test]
+    fn updated_pull_returns_execution_ready_for_deployment() {
+        let path = std::env::temp_dir().join("rs_repo_manager_updated_ready_for_deployment");
+
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+
+        let execution = Execution::<NeedsPull>::new(&path).unwrap();
+        let runner = UpdatedCommandRunner::new();
+
+        let outcome = execution.pull(&runner).unwrap();
+
+        match outcome {
+            PullOutcome::Updated(execution) => {
+                assert_needs_deploy(&execution);
+            }
+            PullOutcome::UpToDate => {
+                panic!("expected repository to be updated");
+            }
+        }
 
         fs::remove_dir_all(&path).unwrap();
     }
