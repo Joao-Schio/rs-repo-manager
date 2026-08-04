@@ -1,5 +1,5 @@
 use std::path::Path;
-
+pub mod process_runner;
 pub struct CommandSpec {
     pub program: String,
     pub args: Vec<String>,
@@ -25,3 +25,6 @@ pub struct CommandOutput {
 pub trait CommandRunner {
     fn run(&self, command: &CommandSpec, directory: &Path) -> Result<CommandOutput, CommandError>;
 }
+
+#[cfg(test)]
+pub mod tests;
