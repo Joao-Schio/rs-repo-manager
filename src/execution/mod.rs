@@ -6,7 +6,7 @@ use std::{
 use crate::{
     command::{CommandOutput, CommandRunner, CommandSpec},
     execution::{
-        PullOutcome::{UpToDate, Updated},
+        PullOutcome::UpToDate,
         execution_error::ExecutionError,
     },
 };
@@ -80,6 +80,7 @@ impl Execution<NeedsPull> {
 pub struct DeploymentPlan {
     pub after_pull: Vec<CommandSpec>,
     pub compose_down: bool,
+    pub before_up: Vec<CommandSpec>,
 }
 
 impl Execution<NeedsDeploy> {
@@ -88,8 +89,8 @@ impl Execution<NeedsDeploy> {
         runner: &R,
         plan: &DeploymentPlan,
     ) -> Result<(), ExecutionError> {
-        for i in &plan.after_pull {
-            Self::check_command(runner.run(i, &self.directory)?)?;
+        for command in &plan.after_pull {
+            Self::check_command(runner.run(command, &self.directory)?)?;
         }
 
         if plan.compose_down {
@@ -99,6 +100,12 @@ impl Execution<NeedsDeploy> {
             };
 
             Self::check_command(runner.run(&compose_down_command, &self.directory)?)?;
+        }
+
+        for command in &plan.before_up {
+            Self::check_command(
+                runner.run(command, &self.directory)?
+            )?;
         }
 
         let compose_up_command = CommandSpec {
