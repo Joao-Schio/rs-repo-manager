@@ -3,7 +3,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::execution::execution_error::ExecutionError;
+use crate::{
+    command::{CommandRunner, CommandSpec},
+    execution::execution_error::ExecutionError,
+};
 
 pub mod execution_error;
 
@@ -15,9 +18,7 @@ pub struct Execution<State> {
 }
 
 impl Execution<NeedsPull> {
-    pub fn new(
-        path: impl AsRef<Path>,
-    ) -> Result<Self, ExecutionError> {
+    pub fn new(path: impl AsRef<Path>) -> Result<Self, ExecutionError> {
         let directory = path.as_ref().to_path_buf();
 
         if !directory.is_dir() {
@@ -28,6 +29,26 @@ impl Execution<NeedsPull> {
             state: PhantomData,
             directory,
         })
+    }
+
+    pub fn pull<R: CommandRunner>(self, runner: &R) -> Result<(), ExecutionError> {
+        let command = CommandSpec {
+            program: "git".into(),
+            args: vec!["pull".into()],
+        };
+
+        let execution = runner.run(&command, &self.directory)?;
+
+        if execution.status != Some(0) {
+            return Err(
+                ExecutionError::CommandFailed { 
+                    status: execution.status,
+                    stderr: execution.stderr 
+                }
+            )
+        }
+
+        Ok(())
     }
 }
 
@@ -40,7 +61,7 @@ mod tests {
         path::{Path, PathBuf},
     };
 
-    use crate::command::{CommandOutput, CommandRunner, CommandSpec};
+    use crate::command::{CommandError, CommandOutput, CommandRunner, CommandSpec};
 
     #[derive(Debug)]
     struct RecordedCommand {
@@ -66,7 +87,7 @@ mod tests {
             &self,
             command: &CommandSpec,
             directory: &Path,
-        ) -> Result<CommandOutput, ExecutionError> {
+        ) -> Result<CommandOutput, CommandError> {
             self.commands.borrow_mut().push(RecordedCommand {
                 program: command.program.clone(),
                 args: command.args.clone(),
@@ -83,8 +104,7 @@ mod tests {
 
     #[test]
     fn new_accepts_existing_directory() {
-        let path = std::env::temp_dir()
-            .join("rs_repo_manager_new_accepts_directory");
+        let path = std::env::temp_dir().join("rs_repo_manager_new_accepts_directory");
 
         let _ = fs::remove_dir_all(&path);
         fs::create_dir_all(&path).unwrap();
@@ -98,23 +118,18 @@ mod tests {
 
     #[test]
     fn new_rejects_nonexistent_directory() {
-        let path = std::env::temp_dir()
-            .join("rs_repo_manager_directory_that_does_not_exist");
+        let path = std::env::temp_dir().join("rs_repo_manager_directory_that_does_not_exist");
 
         let _ = fs::remove_dir_all(&path);
 
         let result = Execution::<NeedsPull>::new(&path);
 
-        assert!(matches!(
-            result,
-            Err(ExecutionError::InvalidDirectory(_))
-        ));
+        assert!(matches!(result, Err(ExecutionError::InvalidDirectory(_))));
     }
 
     #[test]
     fn pull_runs_git_pull_in_repository_directory() {
-        let path = std::env::temp_dir()
-            .join("rs_repo_manager_pull_runs_git_pull");
+        let path = std::env::temp_dir().join("rs_repo_manager_pull_runs_git_pull");
 
         let _ = fs::remove_dir_all(&path);
         fs::create_dir_all(&path).unwrap();
@@ -130,6 +145,83 @@ mod tests {
         assert_eq!(commands[0].program, "git");
         assert_eq!(commands[0].args, vec!["pull"]);
         assert_eq!(commands[0].directory, path);
+
+        fs::remove_dir_all(&path).unwrap();
+    }
+
+    struct FailingCommandRunner;
+
+    impl CommandRunner for FailingCommandRunner {
+        fn run(
+            &self,
+            _command: &CommandSpec,
+            _directory: &Path,
+        ) -> Result<CommandOutput, CommandError> {
+            Ok(CommandOutput {
+                status: Some(1),
+                stdout: String::new(),
+                stderr: "git failed".into(),
+            })
+        }
+    }
+
+    #[test]
+    fn pull_propagates_runner_error() {
+        let path = std::env::temp_dir()
+            .join("rs_repo_manager_pull_propagates_runner_error");
+
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+
+        let execution = Execution::<NeedsPull>::new(&path).unwrap();
+
+        let runner = FailingCommandRunner;
+
+        let result = execution.pull(&runner);
+
+        assert!(result.is_err());
+
+        fs::remove_dir_all(&path).unwrap();
+    }
+
+    struct UnsuccessfulCommandRunner;
+
+    impl CommandRunner for UnsuccessfulCommandRunner {
+        fn run(
+            &self,
+            _command: &CommandSpec,
+            _directory: &Path,
+        ) -> Result<CommandOutput, CommandError> {
+            Ok(CommandOutput {
+                status: Some(1),
+                stdout: String::new(),
+                stderr: "git failed".into(),
+            })
+        }
+    }
+
+
+    #[test]
+    fn pull_rejects_unsuccessful_command_output() {
+        let path = std::env::temp_dir()
+            .join("rs_repo_manager_pull_rejects_unsuccessful_output");
+
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+
+        let execution = Execution::<NeedsPull>::new(&path).unwrap();
+
+        let runner = UnsuccessfulCommandRunner;
+
+        let result = execution.pull(&runner);
+
+        assert!(matches!(
+            result,
+            Err(ExecutionError::CommandFailed {
+                status: Some(1),
+                ..
+            })
+        ));
 
         fs::remove_dir_all(&path).unwrap();
     }

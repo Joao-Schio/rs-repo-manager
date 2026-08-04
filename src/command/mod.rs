@@ -1,10 +1,19 @@
 use std::path::Path;
 
-use crate::execution::execution_error::ExecutionError;
-
 pub struct CommandSpec {
     pub program: String,
     pub args: Vec<String>,
+}
+
+#[derive(Debug)]
+pub enum CommandError {
+    IoError(std::io::Error)
+}
+
+impl From<std::io::Error> for CommandError {
+    fn from(error: std::io::Error) -> Self {
+        Self::IoError(error)
+    }
 }
 
 pub struct CommandOutput {
@@ -14,9 +23,6 @@ pub struct CommandOutput {
 }
 
 pub trait CommandRunner {
-    fn run(
-        &self,
-        command: &CommandSpec,
-        directory: &Path,
-    ) -> Result<CommandOutput, ExecutionError>;
+    fn run(&self, command: &CommandSpec, directory: &Path)
+    -> Result<CommandOutput, CommandError>;
 }
