@@ -4,13 +4,15 @@ use std::{
 };
 
 use crate::{
-    command::{CommandOutput, CommandRunner, CommandSpec},
-    execution::execution_error::ExecutionError,
+    command::{CommandOutput, CommandRunner, CommandSpec}, execution::{PullOutcome::UpToDate, execution_error::ExecutionError},
 };
 
 pub mod execution_error;
 
 pub struct NeedsPull;
+pub enum PullOutcome {
+    UpToDate,
+}
 
 pub struct Execution<State> {
     state: PhantomData<State>,
@@ -41,7 +43,7 @@ impl Execution<NeedsPull> {
         return Ok(command);
     }
 
-    pub fn pull<R: CommandRunner>(self,runner: &R,) -> Result<(), ExecutionError> {
+    pub fn pull<R: CommandRunner>(self,runner: &R,) -> Result<PullOutcome, ExecutionError> {
         let head_command = CommandSpec {
             program: "git".into(),
             args: vec!["rev-parse".into(), "HEAD".into()],
@@ -64,7 +66,9 @@ impl Execution<NeedsPull> {
             runner.run(&head_command, &self.directory)?
         )?;
 
-        Ok(())
+        Ok(
+            UpToDate
+        )
     }
 }
 
@@ -281,6 +285,70 @@ mod tests {
         assert_eq!(commands[1].args, vec!["pull"]);
 
         assert_eq!(commands[2].args, vec!["rev-parse", "HEAD"]);
+
+        fs::remove_dir_all(&path).unwrap();
+    }
+
+    struct UpToDateCommandRunner {
+        commands: RefCell<Vec<RecordedCommand>>,
+        invocation: RefCell<usize>,
+    }
+
+    impl UpToDateCommandRunner {
+        fn new() -> Self {
+            Self {
+                commands: RefCell::new(Vec::new()),
+                invocation: RefCell::new(0),
+            }
+        }
+    }
+    impl CommandRunner for UpToDateCommandRunner {
+        fn run(
+            &self,
+            command: &CommandSpec,
+            directory: &Path,
+        ) -> Result<CommandOutput, CommandError> {
+            self.commands.borrow_mut().push(RecordedCommand {
+                program: command.program.clone(),
+                args: command.args.clone(),
+                directory: directory.to_path_buf(),
+            });
+
+            let mut invocation = self.invocation.borrow_mut();
+
+            let stdout = match *invocation {
+                0 => "abc123\n",
+                1 => "",
+                2 => "abc123\n",
+                _ => panic!("unexpected command"),
+            };
+
+            *invocation += 1;
+
+            Ok(CommandOutput {
+                status: Some(0),
+                stdout: stdout.into(),
+                stderr: String::new(),
+            })
+        }
+    }
+    #[test]
+    fn pull_reports_up_to_date_when_head_does_not_change() {
+        let path = std::env::temp_dir()
+            .join("rs_repo_manager_pull_reports_up_to_date");
+
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+
+        let execution = Execution::<NeedsPull>::new(&path).unwrap();
+        let runner = UpToDateCommandRunner::new();
+
+        let result = execution.pull(&runner).unwrap();
+
+        assert!(matches!(
+            result,
+            PullOutcome::UpToDate
+        ));
 
         fs::remove_dir_all(&path).unwrap();
     }
