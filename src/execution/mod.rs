@@ -25,6 +25,18 @@ pub struct Execution<State> {
     directory: PathBuf,
 }
 
+impl<State> Execution<State> {
+    fn check_command(command: CommandOutput) -> Result<CommandOutput, ExecutionError> {
+        if command.status != Some(0) {
+            return Err(ExecutionError::CommandFailed {
+                status: command.status,
+                stderr: command.stderr,
+            });
+        }
+        return Ok(command);
+    }
+}
+
 impl Execution<NeedsPull> {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, ExecutionError> {
         let directory = path.as_ref().to_path_buf();
@@ -38,17 +50,6 @@ impl Execution<NeedsPull> {
             directory,
         })
     }
-
-    fn check_command(command: CommandOutput) -> Result<CommandOutput, ExecutionError> {
-        if command.status != Some(0) {
-            return Err(ExecutionError::CommandFailed {
-                status: command.status,
-                stderr: command.stderr,
-            });
-        }
-        return Ok(command);
-    }
-
     pub fn pull<R: CommandRunner>(self, runner: &R) -> Result<PullOutcome, ExecutionError> {
         let head_command = CommandSpec {
             program: "git".into(),
@@ -75,6 +76,29 @@ impl Execution<NeedsPull> {
         }));
     }
 }
+
+impl Execution<NeedsDeploy> {
+    pub fn deploy<R: CommandRunner>(
+        self,
+        runner: &R,
+    ) -> Result<(), ExecutionError> {
+        let compose_up_command = CommandSpec {
+            program: "docker".into(),
+            args: vec![
+                "compose".into(),
+                "up".into(),
+                "-d".into(),
+                "--build".into()
+            ]
+        };
+        let compose_up_output = Self::check_command(
+            runner.run(&compose_up_command, &self.directory)?
+        )?;
+        
+        Ok(())
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -413,6 +437,37 @@ mod tests {
                 panic!("expected repository to be updated");
             }
         }
+
+        fs::remove_dir_all(&path).unwrap();
+    }
+
+
+    #[test]
+    fn deploy_runs_docker_compose_up_in_repository_directory() {
+        let path = std::env::temp_dir()
+            .join("rs_repo_manager_deploy_runs_compose_up");
+
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+
+        let execution = Execution::<NeedsDeploy> {
+            state: PhantomData,
+            directory: path.clone(),
+        };
+
+        let runner = FakeCommandRunner::new();
+
+        execution.deploy(&runner).unwrap();
+
+        let commands = runner.commands.borrow();
+
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0].program, "docker");
+        assert_eq!(
+            commands[0].args,
+            vec!["compose", "up", "-d", "--build"]
+        );
+        assert_eq!(commands[0].directory, path);
 
         fs::remove_dir_all(&path).unwrap();
     }
