@@ -83,10 +83,19 @@ pub struct DeploymentPlan {
     pub before_up: Vec<CommandSpec>,
     pub after_up: Vec<CommandSpec>,
 }
-
+impl Default for DeploymentPlan {
+    fn default() -> Self {
+        Self {
+            after_pull: Vec::new(),
+            compose_down: false,
+            before_up: Vec::new(),
+            after_up: Vec::new(),
+        }
+    }
+}
 impl Execution<NeedsDeploy> {
     fn run_and_check_commands<R: CommandRunner>(
-        commands: &Vec<CommandSpec>, 
+        commands: &[CommandSpec], 
         runner: &R,
         directory : &Path) -> Result<(), ExecutionError> {
         for command in commands {
