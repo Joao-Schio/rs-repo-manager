@@ -81,17 +81,32 @@ pub struct DeploymentPlan {
     pub after_pull: Vec<CommandSpec>,
     pub compose_down: bool,
     pub before_up: Vec<CommandSpec>,
+    pub after_up: Vec<CommandSpec>,
 }
 
 impl Execution<NeedsDeploy> {
+    fn run_and_check_commands<R: CommandRunner>(
+        commands: &Vec<CommandSpec>, 
+        runner: &R,
+        directory : &Path) -> Result<(), ExecutionError> {
+        for command in commands {
+            Self::check_command(
+                runner.run(command, directory)?
+            )?;
+        }
+        Ok(())
+    }
+    
     pub fn deploy<R: CommandRunner>(
         self,
         runner: &R,
         plan: &DeploymentPlan,
     ) -> Result<(), ExecutionError> {
-        for command in &plan.after_pull {
-            Self::check_command(runner.run(command, &self.directory)?)?;
-        }
+        Self::run_and_check_commands(
+            &plan.after_pull, 
+            runner, 
+            &self.directory
+        )?;
 
         if plan.compose_down {
             let compose_down_command = CommandSpec {
@@ -102,11 +117,11 @@ impl Execution<NeedsDeploy> {
             Self::check_command(runner.run(&compose_down_command, &self.directory)?)?;
         }
 
-        for command in &plan.before_up {
-            Self::check_command(
-                runner.run(command, &self.directory)?
-            )?;
-        }
+        Self::run_and_check_commands(
+            &plan.before_up, 
+            runner, 
+            &self.directory
+        )?;
 
         let compose_up_command = CommandSpec {
             program: "docker".into(),
@@ -114,6 +129,12 @@ impl Execution<NeedsDeploy> {
         };
 
         Self::check_command(runner.run(&compose_up_command, &self.directory)?)?;
+        
+        Self::run_and_check_commands(
+            &plan.after_up, 
+            runner, 
+            &self.directory
+        )?;
 
         Ok(())
     }

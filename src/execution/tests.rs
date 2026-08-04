@@ -349,7 +349,8 @@ fn deploy_runs_docker_compose_up_in_repository_directory() {
     let fake_plan = DeploymentPlan {
         compose_down: false,
         after_pull: vec![],
-        before_up: vec![]
+        before_up: vec![],
+        after_up: vec![],
     };
 
     execution.deploy(&runner, &fake_plan).unwrap();
@@ -381,7 +382,8 @@ fn deploy_runs_compose_down_before_up_when_enabled() {
     let plan = DeploymentPlan {
         compose_down: true,
         after_pull: vec![],
-        before_up: Vec::new()
+        before_up: Vec::new(),
+        after_up: vec![],
     };
 
     execution.deploy(&runner, &plan).unwrap();
@@ -421,7 +423,8 @@ fn deploy_runs_after_pull_commands_before_compose_down() {
             args: vec!["hello".into()],
         }],
         compose_down: true,
-        before_up: vec![]
+        before_up: vec![],
+        after_up: vec![],
     };
 
     execution.deploy(&runner, &plan).unwrap();
@@ -468,6 +471,7 @@ fn deploy_runs_before_up_commands_after_compose_down() {
                 args: vec!["before-up".into()],
             },
         ],
+        after_up: vec![],
     };
 
     execution.deploy(&runner, &plan).unwrap();
@@ -490,6 +494,58 @@ fn deploy_runs_before_up_commands_after_compose_down() {
     assert_eq!(
         commands[2].args,
         vec!["compose", "up", "-d", "--build"]
+    );
+
+    assert!(commands.iter().all(|command| {
+        command.directory == path
+    }));
+
+    fs::remove_dir_all(&path).unwrap();
+}
+
+#[test]
+fn deploy_runs_after_up_commands_after_compose_up() {
+    let path = std::env::temp_dir()
+        .join("rs_repo_manager_after_up");
+
+    let _ = fs::remove_dir_all(&path);
+    fs::create_dir_all(&path).unwrap();
+
+    let execution = Execution::<NeedsDeploy> {
+        state: PhantomData,
+        directory: path.clone(),
+    };
+
+    let runner = FakeCommandRunner::new();
+
+    let plan = DeploymentPlan {
+        after_pull: vec![],
+        compose_down: false,
+        before_up: vec![],
+        after_up: vec![
+            CommandSpec {
+                program: "echo".into(),
+                args: vec!["after-up".into()],
+            },
+        ],
+    };
+
+    execution.deploy(&runner, &plan).unwrap();
+
+    let commands = runner.commands.borrow();
+
+    assert_eq!(commands.len(), 2);
+
+    assert_eq!(commands[0].program, "docker");
+    assert_eq!(
+        commands[0].args,
+        vec!["compose", "up", "-d", "--build"]
+    );
+
+    assert_eq!(commands[1].program, "echo");
+    assert_eq!(
+        commands[1].args,
+        vec!["after-up"]
     );
 
     assert!(commands.iter().all(|command| {
