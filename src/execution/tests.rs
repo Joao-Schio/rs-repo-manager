@@ -1,9 +1,7 @@
 use super::*;
 use std::{
     cell::RefCell,
-    fs,
-    path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+    path::{Path,},
 };
 
 use crate::{
@@ -11,7 +9,6 @@ use crate::{
     test_support::{RecordedCommand, TestDirectory, UpToDateCommandRunner},
 };
 
-static TEST_DIRECTORY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 struct FakeCommandRunner {
     commands: RefCell<Vec<RecordedCommand>>,
