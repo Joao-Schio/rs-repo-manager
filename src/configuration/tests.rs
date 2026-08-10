@@ -76,3 +76,49 @@ fn parses_configured_command() {
     assert_eq!(command.program, "cargo");
     assert_eq!(command.args, vec!["test"]);
 }
+
+#[test]
+fn converts_repository_configuration_to_runtime_repository() {
+    let input = r#"
+    {
+        "repositories": [
+            {
+                "directory": "/srv/my-service",
+                "compose_down": true,
+                "after_pull": [
+                    {
+                        "program": "cargo",
+                        "args": ["test"]
+                    }
+                ]
+            }
+        ]
+    }
+    "#;
+
+    let configuration: Configuration =
+        serde_json::from_str(input).unwrap();
+
+    let repositories = configuration.into_repositories();
+
+    assert_eq!(repositories.len(), 1);
+
+    let repository = &repositories[0];
+
+    assert_eq!(
+        repository.directory,
+        PathBuf::from("/srv/my-service")
+    );
+
+    assert!(repository.deployment_plan.compose_down);
+
+    assert_eq!(
+        repository.deployment_plan.after_pull[0].program,
+        "cargo"
+    );
+
+    assert_eq!(
+        repository.deployment_plan.after_pull[0].args,
+        vec!["test"]
+    );
+}
