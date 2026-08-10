@@ -9,6 +9,7 @@ fn main() {
 
     if args.is_err() {
         eprintln!("Arguments not loaded correctly");
+        return;
     }
 
 
