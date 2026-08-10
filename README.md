@@ -1,5 +1,8 @@
 # rs-repo-manager
 
+[![Cargo test](https://github.com/Joao-Schio/rs-repo-manager/actions/workflows/test.yml/badge.svg)](https://github.com/Joao-Schio/rs-repo-manager/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/Joao-Schio/rs-repo-manager/branch/main/graph/badge.svg)](https://codecov.io/gh/Joao-Schio/rs-repo-manager)
+
 A simple project for managing Docker-based repositories running on my Raspberry Pi.
 
 I could have written this application in almost any language — and probably would have been more productive using C# or Python — but it had been a while since I last worked on a Rust project, so I decided to use this as an opportunity to get back into the language.
