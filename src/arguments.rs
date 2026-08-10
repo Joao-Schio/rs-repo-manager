@@ -21,15 +21,23 @@ impl Arguments {
     }
 }
 
-#[test]
-fn parses_configuration_path_from_arguments() {
-    let arguments = Arguments::parse([
-        "/etc/rs-repo-manager/config.json".to_string(),
-    ])
-    .unwrap();
 
-    assert_eq!(
-        arguments.configuration_path,
-        PathBuf::from("/etc/rs-repo-manager/config.json")
-    );
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use crate::arguments::Arguments;
+    
+    #[test]
+    fn parses_configuration_path_from_arguments() {
+        let arguments = Arguments::parse([
+            "/etc/rs-repo-manager/config.json".to_string(),
+        ])
+        .unwrap();
+    
+        assert_eq!(
+            arguments.configuration_path,
+            PathBuf::from("/etc/rs-repo-manager/config.json")
+        );
+    }
 }
+
