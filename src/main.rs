@@ -1,10 +1,18 @@
 use rs_repo_manager::{
-    command::process_runner::ProcessCommandRunner, configuration::Configuration,
-    repository::RepositoryManager,
+    arguments::Arguments, command::process_runner::ProcessCommandRunner, configuration::Configuration, repository::RepositoryManager,
 };
 
 fn main() {
-    let configuration = Configuration::load("config.json").expect("failed to load configuration");
+    let args = Arguments::parse(
+        std::env::args().skip(1)
+    );
+
+    if args.is_err() {
+        eprintln!("Arguments not loaded correctly");
+    }
+
+
+    let configuration = Configuration::load(args.unwrap().configuration_path).expect("failed to load configuration");
 
     let repositories = configuration.into_repositories();
 
