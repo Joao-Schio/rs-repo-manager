@@ -4,10 +4,9 @@ use std::path::PathBuf;
 pub mod tests;
 
 use crate::{
-    command::CommandRunner,
-    execution::{
-        DeploymentPlan, execution_error::ExecutionError,
-    },
+    command::CommandRunner, execution::{
+        DeploymentPlan, Execution, execution_error::ExecutionError,
+    }, repository,
 };
 
 pub struct Repository {
@@ -27,6 +26,12 @@ impl<'a, R: CommandRunner> RepositoryManager<'a, R> {
 
 impl<'a, R: CommandRunner> RepositoryManager<'a, R> {
     pub fn run(&self, repositories: &[Repository]) -> Result<(), ExecutionError> {
-        todo!()
+        for repository in repositories {
+            let execution = Execution::new(
+                &repository.directory
+            )?;
+            let _ = execution.pull(self.runner)?;
+        }
+        Ok(())
     }
 }
