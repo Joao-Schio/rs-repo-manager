@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::configuration::Configuration;
+use crate::{configuration::{Configuration, ConfigurationError}, test_support::TestDirectory};
 
 #[test]
 fn parses_repository_directory() {
@@ -106,4 +106,67 @@ fn converts_repository_configuration_to_runtime_repository() {
     assert_eq!(repository.deployment_plan.after_pull[0].program, "cargo");
 
     assert_eq!(repository.deployment_plan.after_pull[0].args, vec!["test"]);
+}
+
+#[test]
+fn loads_configuration_from_file() {
+    let directory = TestDirectory::new("loads_configuration");
+
+    let config_path = directory.path().join("config.json");
+
+    std::fs::write(
+        &config_path,
+        r#"
+        {
+            "repositories": [
+                {
+                    "directory": "/srv/my-service"
+                }
+            ]
+        }
+        "#,
+    )
+    .unwrap();
+
+    let configuration = Configuration::load(&config_path).unwrap();
+
+    assert_eq!(configuration.repositories.len(), 1);
+    assert_eq!(
+        configuration.repositories[0].directory,
+        PathBuf::from("/srv/my-service")
+    );
+}
+
+
+#[test]
+fn load_returns_io_error_when_file_does_not_exist() {
+    let directory = TestDirectory::new("missing_configuration");
+
+    let result =
+        Configuration::load(directory.path().join("missing.json"));
+
+    assert!(matches!(
+        result,
+        Err(ConfigurationError::Io(_))
+    ));
+}
+
+#[test]
+fn load_returns_invalid_json_error() {
+    let directory = TestDirectory::new("invalid_configuration");
+
+    let config_path = directory.path().join("config.json");
+
+    std::fs::write(
+        &config_path,
+        "{ definitely not json }",
+    )
+    .unwrap();
+
+    let result = Configuration::load(&config_path);
+
+    assert!(matches!(
+        result,
+        Err(ConfigurationError::InvalidJson(_))
+    ));
 }
