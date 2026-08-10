@@ -1,7 +1,7 @@
 use crate::{
     execution::DeploymentPlan,
     repository::{Repository, RepositoryManager},
-    test_support::{GitUpdatedCommandRunner, TestDirectory, UpToDateCommandRunner},
+    test_support::{FakeCommandRunner, FakeRepositoryState, TestDirectory},
 };
 
 #[test]
@@ -13,7 +13,7 @@ fn manager_does_not_deploy_repository_when_pull_is_up_to_date() {
         deployment_plan: DeploymentPlan::default(),
     };
 
-    let runner = UpToDateCommandRunner::new();
+    let runner = FakeCommandRunner::new([FakeRepositoryState::up_to_date(directory.path())]);
     let manager = RepositoryManager::new(&runner);
 
     manager.run(&[repository]).unwrap();
@@ -42,7 +42,7 @@ fn manager_deploys_repository_when_pull_detects_update() {
         deployment_plan: DeploymentPlan::default(),
     };
 
-    let runner = GitUpdatedCommandRunner::new();
+    let runner = FakeCommandRunner::new([FakeRepositoryState::updated(directory.path())]);
     let manager = RepositoryManager::new(&runner);
 
     manager.run(&[repository]).unwrap();
