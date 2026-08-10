@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use crate::configuration::Configuration;
 
-
 #[test]
 fn parses_repository_directory() {
     let input = r#"
@@ -15,8 +14,7 @@ fn parses_repository_directory() {
     }
     "#;
 
-    let configuration: Configuration =
-        serde_json::from_str(input).unwrap();
+    let configuration: Configuration = serde_json::from_str(input).unwrap();
 
     assert_eq!(configuration.repositories.len(), 1);
 
@@ -38,8 +36,7 @@ fn repository_configuration_defaults_deployment_options() {
     }
     "#;
 
-    let configuration: Configuration =
-        serde_json::from_str(input).unwrap();
+    let configuration: Configuration = serde_json::from_str(input).unwrap();
 
     let repository = &configuration.repositories[0];
 
@@ -67,11 +64,9 @@ fn parses_configured_command() {
     }
     "#;
 
-    let configuration: Configuration =
-        serde_json::from_str(input).unwrap();
+    let configuration: Configuration = serde_json::from_str(input).unwrap();
 
-    let command =
-        &configuration.repositories[0].after_pull[0];
+    let command = &configuration.repositories[0].after_pull[0];
 
     assert_eq!(command.program, "cargo");
     assert_eq!(command.args, vec!["test"]);
@@ -96,8 +91,7 @@ fn converts_repository_configuration_to_runtime_repository() {
     }
     "#;
 
-    let configuration: Configuration =
-        serde_json::from_str(input).unwrap();
+    let configuration: Configuration = serde_json::from_str(input).unwrap();
 
     let repositories = configuration.into_repositories();
 
@@ -105,20 +99,31 @@ fn converts_repository_configuration_to_runtime_repository() {
 
     let repository = &repositories[0];
 
-    assert_eq!(
-        repository.directory,
-        PathBuf::from("/srv/my-service")
-    );
+    assert_eq!(repository.directory, PathBuf::from("/srv/my-service"));
 
     assert!(repository.deployment_plan.compose_down);
 
-    assert_eq!(
-        repository.deployment_plan.after_pull[0].program,
-        "cargo"
-    );
+    assert_eq!(repository.deployment_plan.after_pull[0].program, "cargo");
+
+    assert_eq!(repository.deployment_plan.after_pull[0].args, vec!["test"]);
+}
+
+#[test]
+fn parses_configuration_from_json() {
+    let input = r#"
+    {
+        "repositories": [
+            {
+                "directory": "/srv/my-service"
+            }
+        ]
+    }
+    "#;
+
+    let configuration = Configuration::parse(input).unwrap();
 
     assert_eq!(
-        repository.deployment_plan.after_pull[0].args,
-        vec!["test"]
+        configuration.repositories[0].directory,
+        PathBuf::from("/srv/my-service")
     );
 }
