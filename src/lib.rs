@@ -1,3 +1,4 @@
+pub mod arguments;
 pub mod command;
 pub mod configuration;
 pub mod execution;

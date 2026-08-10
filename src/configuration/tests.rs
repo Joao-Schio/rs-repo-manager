@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use crate::{configuration::{Configuration, ConfigurationError}, test_support::TestDirectory};
+use crate::{
+    configuration::{Configuration, ConfigurationError},
+    test_support::TestDirectory,
+};
 
 #[test]
 fn parses_repository_directory() {
@@ -137,18 +140,13 @@ fn loads_configuration_from_file() {
     );
 }
 
-
 #[test]
 fn load_returns_io_error_when_file_does_not_exist() {
     let directory = TestDirectory::new("missing_configuration");
 
-    let result =
-        Configuration::load(directory.path().join("missing.json"));
+    let result = Configuration::load(directory.path().join("missing.json"));
 
-    assert!(matches!(
-        result,
-        Err(ConfigurationError::Io(_))
-    ));
+    assert!(matches!(result, Err(ConfigurationError::Io(_))));
 }
 
 #[test]
@@ -157,16 +155,9 @@ fn load_returns_invalid_json_error() {
 
     let config_path = directory.path().join("config.json");
 
-    std::fs::write(
-        &config_path,
-        "{ definitely not json }",
-    )
-    .unwrap();
+    std::fs::write(&config_path, "{ definitely not json }").unwrap();
 
     let result = Configuration::load(&config_path);
 
-    assert!(matches!(
-        result,
-        Err(ConfigurationError::InvalidJson(_))
-    ));
+    assert!(matches!(result, Err(ConfigurationError::InvalidJson(_))));
 }
