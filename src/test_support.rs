@@ -85,3 +85,40 @@ impl CommandRunner for UpToDateCommandRunner {
         })
     }
 }
+
+pub struct UpdatedCommandRunner {
+    pub invocation: RefCell<usize>,
+}
+
+impl UpdatedCommandRunner {
+    pub fn new() -> Self {
+        Self {
+            invocation: RefCell::new(0),
+        }
+    }
+}
+
+impl CommandRunner for UpdatedCommandRunner {
+    fn run(
+        &self,
+        _command: &CommandSpec,
+        _directory: &Path,
+    ) -> Result<CommandOutput, CommandError> {
+        let mut invocation = self.invocation.borrow_mut();
+
+        let stdout = match *invocation {
+            0 => "abc123\n",
+            1 => "",
+            2 => "def456\n",
+            _ => panic!("unexpected command"),
+        };
+
+        *invocation += 1;
+
+        Ok(CommandOutput {
+            status: Some(0),
+            stdout: stdout.into(),
+            stderr: String::new(),
+        })
+    }
+}

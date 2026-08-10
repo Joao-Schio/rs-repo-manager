@@ -1,14 +1,10 @@
 use super::*;
-use std::{
-    cell::RefCell,
-    path::{Path,},
-};
+use std::{cell::RefCell, path::Path};
 
 use crate::{
     command::{CommandError, CommandOutput, CommandRunner, CommandSpec},
-    test_support::{RecordedCommand, TestDirectory, UpToDateCommandRunner},
+    test_support::{RecordedCommand, TestDirectory, UpToDateCommandRunner, UpdatedCommandRunner},
 };
-
 
 struct FakeCommandRunner {
     commands: RefCell<Vec<RecordedCommand>>,
@@ -186,43 +182,6 @@ fn pull_reports_up_to_date_when_head_does_not_change() {
     let result = execution.pull(&runner).unwrap();
 
     assert!(matches!(result, PullOutcome::UpToDate));
-}
-
-struct UpdatedCommandRunner {
-    invocation: RefCell<usize>,
-}
-
-impl UpdatedCommandRunner {
-    fn new() -> Self {
-        Self {
-            invocation: RefCell::new(0),
-        }
-    }
-}
-
-impl CommandRunner for UpdatedCommandRunner {
-    fn run(
-        &self,
-        _command: &CommandSpec,
-        _directory: &Path,
-    ) -> Result<CommandOutput, CommandError> {
-        let mut invocation = self.invocation.borrow_mut();
-
-        let stdout = match *invocation {
-            0 => "abc123\n",
-            1 => "",
-            2 => "def456\n",
-            _ => panic!("unexpected command"),
-        };
-
-        *invocation += 1;
-
-        Ok(CommandOutput {
-            status: Some(0),
-            stdout: stdout.into(),
-            stderr: String::new(),
-        })
-    }
 }
 
 fn assert_needs_deploy(_execution: &Execution<NeedsDeploy>) {}
