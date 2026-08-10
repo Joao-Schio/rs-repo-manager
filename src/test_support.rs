@@ -80,9 +80,7 @@ pub(crate) struct FakeCommandRunner {
 }
 
 impl FakeCommandRunner {
-    pub(crate) fn new(
-        repositories: impl IntoIterator<Item = FakeRepositoryState>,
-    ) -> Self {
+    pub(crate) fn new(repositories: impl IntoIterator<Item = FakeRepositoryState>) -> Self {
         let repositories = repositories
             .into_iter()
             .map(|state| (state.directory.clone(), state))

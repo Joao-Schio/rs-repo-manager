@@ -54,7 +54,6 @@ fn manager_deploys_repository_when_pull_detects_update() {
     }));
 }
 
-
 #[test]
 fn manager_deploys_only_repositories_that_changed() {
     let unchanged_directory = TestDirectory::new("manager_unchanged");
@@ -83,8 +82,7 @@ fn manager_deploys_only_repositories_that_changed() {
     let commands = runner.commands.borrow();
 
     assert!(!commands.iter().any(|command| {
-        command.program == "docker"
-            && command.directory == unchanged_directory.path()
+        command.program == "docker" && command.directory == unchanged_directory.path()
     }));
 
     assert!(commands.iter().any(|command| {
@@ -96,11 +94,9 @@ fn manager_deploys_only_repositories_that_changed() {
 
 #[test]
 fn manager_continues_after_repository_failure() {
-    let missing_directory =
-        std::env::temp_dir().join("rs_repo_manager_missing_repository");
+    let missing_directory = std::env::temp_dir().join("rs_repo_manager_missing_repository");
 
-    let valid_directory =
-        TestDirectory::new("manager_after_failure");
+    let valid_directory = TestDirectory::new("manager_after_failure");
 
     let repositories = [
         Repository {
@@ -113,9 +109,7 @@ fn manager_continues_after_repository_failure() {
         },
     ];
 
-    let runner = FakeCommandRunner::new([
-        FakeRepositoryState::up_to_date(valid_directory.path()),
-    ]);
+    let runner = FakeCommandRunner::new([FakeRepositoryState::up_to_date(valid_directory.path())]);
 
     let manager = RepositoryManager::new(&runner);
 
@@ -130,4 +124,41 @@ fn manager_continues_after_repository_failure() {
             && command.args == vec!["pull"]
             && command.directory == valid_directory.path()
     }));
+}
+
+#[test]
+fn manager_collects_all_repository_failures() {
+    let first_missing = std::env::temp_dir().join("rs_repo_manager_missing_first");
+
+    let second_missing = std::env::temp_dir().join("rs_repo_manager_missing_second");
+
+    let repositories = [
+        Repository {
+            directory: first_missing.clone(),
+            deployment_plan: DeploymentPlan::default(),
+        },
+        Repository {
+            directory: second_missing.clone(),
+            deployment_plan: DeploymentPlan::default(),
+        },
+    ];
+
+    let runner = FakeCommandRunner::empty();
+    let manager = RepositoryManager::new(&runner);
+
+    let failures = manager.run(&repositories).unwrap_err();
+
+    assert_eq!(failures.len(), 2);
+
+    assert!(
+        failures
+            .iter()
+            .any(|failure| { failure.directory == first_missing })
+    );
+
+    assert!(
+        failures
+            .iter()
+            .any(|failure| { failure.directory == second_missing })
+    );
 }
