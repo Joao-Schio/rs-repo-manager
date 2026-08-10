@@ -1,19 +1,28 @@
+use std::process::ExitCode;
+
 use rs_repo_manager::{
-    arguments::Arguments, command::process_runner::ProcessCommandRunner, configuration::Configuration, repository::RepositoryManager,
+    arguments::Arguments,
+    command::process_runner::ProcessCommandRunner,
+    configuration::Configuration,
+    repository::RepositoryManager,
 };
 
-fn main() {
-    let args = Arguments::parse(
-        std::env::args().skip(1)
-    );
+fn main() -> ExitCode {
+    let args = match Arguments::parse(std::env::args().skip(1)) {
+        Ok(args) => args,
+        Err(error) => {
+            eprintln!("Invalid arguments: {error:?}");
+            return ExitCode::FAILURE;
+        }
+    };
 
-    if args.is_err() {
-        eprintln!("Arguments not loaded correctly");
-        return;
-    }
-
-
-    let configuration = Configuration::load(args.unwrap().configuration_path).expect("failed to load configuration");
+    let configuration = match Configuration::load(args.configuration_path) {
+        Ok(configuration) => configuration,
+        Err(error) => {
+            eprintln!("Failed to load configuration: {error:?}");
+            return ExitCode::FAILURE;
+        }
+    };
 
     let repositories = configuration.into_repositories();
 
@@ -28,5 +37,9 @@ fn main() {
                 failure.error
             );
         }
+
+        return ExitCode::FAILURE;
     }
+
+    ExitCode::SUCCESS
 }
