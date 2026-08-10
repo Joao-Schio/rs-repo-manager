@@ -6,17 +6,12 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use crate::{command::{CommandError, CommandOutput, CommandRunner, CommandSpec}, test_support::TestDirectory};
+use crate::{
+    command::{CommandError, CommandOutput, CommandRunner, CommandSpec},
+    test_support::{RecordedCommand, TestDirectory, UpToDateCommandRunner},
+};
 
 static TEST_DIRECTORY_COUNTER: AtomicU64 = AtomicU64::new(0);
-
-
-#[derive(Debug)]
-struct RecordedCommand {
-    program: String,
-    args: Vec<String>,
-    directory: PathBuf,
-}
 
 struct FakeCommandRunner {
     commands: RefCell<Vec<RecordedCommand>>,
@@ -182,47 +177,6 @@ fn pull_reads_head_after_git_pull() {
     assert_eq!(commands[0].args, vec!["rev-parse", "HEAD"]);
     assert_eq!(commands[1].args, vec!["pull"]);
     assert_eq!(commands[2].args, vec!["rev-parse", "HEAD"]);
-}
-
-struct UpToDateCommandRunner {
-    commands: RefCell<Vec<RecordedCommand>>,
-    invocation: RefCell<usize>,
-}
-
-impl UpToDateCommandRunner {
-    fn new() -> Self {
-        Self {
-            commands: RefCell::new(Vec::new()),
-            invocation: RefCell::new(0),
-        }
-    }
-}
-
-impl CommandRunner for UpToDateCommandRunner {
-    fn run(&self, command: &CommandSpec, directory: &Path) -> Result<CommandOutput, CommandError> {
-        self.commands.borrow_mut().push(RecordedCommand {
-            program: command.program.clone(),
-            args: command.args.clone(),
-            directory: directory.to_path_buf(),
-        });
-
-        let mut invocation = self.invocation.borrow_mut();
-
-        let stdout = match *invocation {
-            0 => "abc123\n",
-            1 => "",
-            2 => "abc123\n",
-            _ => panic!("unexpected command"),
-        };
-
-        *invocation += 1;
-
-        Ok(CommandOutput {
-            status: Some(0),
-            stdout: stdout.into(),
-            stderr: String::new(),
-        })
-    }
 }
 
 #[test]

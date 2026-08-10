@@ -1,8 +1,11 @@
 use std::{
+    cell::RefCell,
     fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
+
+use crate::command::{CommandError, CommandOutput, CommandRunner, CommandSpec};
 
 static TEST_DIRECTORY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -33,5 +36,52 @@ impl TestDirectory {
 impl Drop for TestDirectory {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.path);
+    }
+}
+#[derive(Debug)]
+pub struct RecordedCommand {
+    pub program: String,
+    pub args: Vec<String>,
+    pub directory: PathBuf,
+}
+
+pub struct UpToDateCommandRunner {
+    pub commands: RefCell<Vec<RecordedCommand>>,
+    pub invocation: RefCell<usize>,
+}
+
+impl UpToDateCommandRunner {
+    pub fn new() -> Self {
+        Self {
+            commands: RefCell::new(Vec::new()),
+            invocation: RefCell::new(0),
+        }
+    }
+}
+
+impl CommandRunner for UpToDateCommandRunner {
+    fn run(&self, command: &CommandSpec, directory: &Path) -> Result<CommandOutput, CommandError> {
+        self.commands.borrow_mut().push(RecordedCommand {
+            program: command.program.clone(),
+            args: command.args.clone(),
+            directory: directory.to_path_buf(),
+        });
+
+        let mut invocation = self.invocation.borrow_mut();
+
+        let stdout = match *invocation {
+            0 => "abc123\n",
+            1 => "",
+            2 => "abc123\n",
+            _ => panic!("unexpected command"),
+        };
+
+        *invocation += 1;
+
+        Ok(CommandOutput {
+            status: Some(0),
+            stdout: stdout.into(),
+            stderr: String::new(),
+        })
     }
 }

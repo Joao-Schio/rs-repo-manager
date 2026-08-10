@@ -5,11 +5,7 @@ use crate::command::{CommandError, CommandOutput, CommandRunner, CommandSpec};
 pub struct ProcessCommandRunner;
 
 impl CommandRunner for ProcessCommandRunner {
-    fn run(
-        &self,
-        command: &CommandSpec,
-        directory: &Path,
-    ) -> Result<CommandOutput, CommandError> {
+    fn run(&self, command: &CommandSpec, directory: &Path) -> Result<CommandOutput, CommandError> {
         let output = std::process::Command::new(&command.program)
             .args(&command.args)
             .current_dir(directory)
