@@ -3,9 +3,41 @@ use std::{
     cell::RefCell,
     fs,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use crate::command::{CommandError, CommandOutput, CommandRunner, CommandSpec};
+
+static TEST_DIRECTORY_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+struct TestDirectory {
+    path: PathBuf,
+}
+
+impl TestDirectory {
+    fn new(name: &str) -> Self {
+        let id = TEST_DIRECTORY_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "rs_repo_manager_{name}_{}_{}",
+            std::process::id(),
+            id
+        ));
+
+        fs::create_dir_all(&path).unwrap();
+
+        Self { path }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TestDirectory {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
 
 #[derive(Debug)]
 struct RecordedCommand {
@@ -44,23 +76,17 @@ impl CommandRunner for FakeCommandRunner {
 
 #[test]
 fn new_accepts_existing_directory() {
-    let path = std::env::temp_dir().join("rs_repo_manager_new_accepts_directory");
+    let directory = TestDirectory::new("new_accepts_directory");
 
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
-
-    let result = Execution::<NeedsPull>::new(&path);
+    let result = Execution::<NeedsPull>::new(directory.path());
 
     assert!(result.is_ok());
-
-    fs::remove_dir_all(&path).unwrap();
 }
 
 #[test]
 fn new_rejects_nonexistent_directory() {
-    let path = std::env::temp_dir().join("rs_repo_manager_directory_that_does_not_exist");
-
-    let _ = fs::remove_dir_all(&path);
+    let directory = TestDirectory::new("new_rejects_nonexistent_directory");
+    let path = directory.path().join("missing");
 
     let result = Execution::<NeedsPull>::new(&path);
 
@@ -69,10 +95,8 @@ fn new_rejects_nonexistent_directory() {
 
 #[test]
 fn pull_runs_git_pull_in_repository_directory() {
-    let path = std::env::temp_dir().join("rs_repo_manager_pull_runs_git_pull");
-
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
+    let directory = TestDirectory::new("pull_runs_git_pull");
+    let path = directory.path().to_path_buf();
 
     let execution = Execution::<NeedsPull>::new(&path).unwrap();
     let runner = FakeCommandRunner::new();
@@ -84,8 +108,6 @@ fn pull_runs_git_pull_in_repository_directory() {
     assert!(commands.iter().any(|command| {
         command.program == "git" && command.args == vec!["pull"] && command.directory == path
     }));
-
-    fs::remove_dir_all(&path).unwrap();
 }
 
 struct FailingCommandRunner;
@@ -105,13 +127,9 @@ impl CommandRunner for FailingCommandRunner {
 
 #[test]
 fn pull_propagates_runner_error() {
-    let path = std::env::temp_dir().join("rs_repo_manager_pull_propagates_runner_error");
+    let directory = TestDirectory::new("pull_propagates_runner_error");
 
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
-
-    let execution = Execution::<NeedsPull>::new(&path).unwrap();
-
+    let execution = Execution::<NeedsPull>::new(directory.path()).unwrap();
     let runner = FailingCommandRunner;
 
     let result = execution.pull(&runner);
@@ -120,8 +138,6 @@ fn pull_propagates_runner_error() {
         result,
         Err(ExecutionError::CommandError(CommandError::IoError(_)))
     ));
-
-    fs::remove_dir_all(&path).unwrap();
 }
 
 struct UnsuccessfulCommandRunner;
@@ -142,13 +158,9 @@ impl CommandRunner for UnsuccessfulCommandRunner {
 
 #[test]
 fn pull_rejects_unsuccessful_command_output() {
-    let path = std::env::temp_dir().join("rs_repo_manager_pull_rejects_unsuccessful_output");
+    let directory = TestDirectory::new("pull_rejects_unsuccessful_output");
 
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
-
-    let execution = Execution::<NeedsPull>::new(&path).unwrap();
-
+    let execution = Execution::<NeedsPull>::new(directory.path()).unwrap();
     let runner = UnsuccessfulCommandRunner;
 
     let result = execution.pull(&runner);
@@ -160,18 +172,13 @@ fn pull_rejects_unsuccessful_command_output() {
             ..
         })
     ));
-
-    fs::remove_dir_all(&path).unwrap();
 }
 
 #[test]
 fn pull_reads_head_before_git_pull() {
-    let path = std::env::temp_dir().join("rs_repo_manager_pull_reads_head_before_pull");
+    let directory = TestDirectory::new("pull_reads_head_before_pull");
 
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
-
-    let execution = Execution::<NeedsPull>::new(&path).unwrap();
+    let execution = Execution::<NeedsPull>::new(directory.path()).unwrap();
     let runner = FakeCommandRunner::new();
 
     execution.pull(&runner).unwrap();
@@ -189,12 +196,9 @@ fn pull_reads_head_before_git_pull() {
 
 #[test]
 fn pull_reads_head_after_git_pull() {
-    let path = std::env::temp_dir().join("rs_repo_manager_pull_reads_head_after_pull");
+    let directory = TestDirectory::new("pull_reads_head_after_pull");
 
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
-
-    let execution = Execution::<NeedsPull>::new(&path).unwrap();
+    let execution = Execution::<NeedsPull>::new(directory.path()).unwrap();
     let runner = FakeCommandRunner::new();
 
     execution.pull(&runner).unwrap();
@@ -204,12 +208,8 @@ fn pull_reads_head_after_git_pull() {
     assert_eq!(commands.len(), 3);
 
     assert_eq!(commands[0].args, vec!["rev-parse", "HEAD"]);
-
     assert_eq!(commands[1].args, vec!["pull"]);
-
     assert_eq!(commands[2].args, vec!["rev-parse", "HEAD"]);
-
-    fs::remove_dir_all(&path).unwrap();
 }
 
 struct UpToDateCommandRunner {
@@ -255,19 +255,14 @@ impl CommandRunner for UpToDateCommandRunner {
 
 #[test]
 fn pull_reports_up_to_date_when_head_does_not_change() {
-    let path = std::env::temp_dir().join("rs_repo_manager_pull_reports_up_to_date");
+    let directory = TestDirectory::new("pull_reports_up_to_date");
 
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
-
-    let execution = Execution::<NeedsPull>::new(&path).unwrap();
+    let execution = Execution::<NeedsPull>::new(directory.path()).unwrap();
     let runner = UpToDateCommandRunner::new();
 
     let result = execution.pull(&runner).unwrap();
 
     assert!(matches!(result, PullOutcome::UpToDate));
-
-    fs::remove_dir_all(&path).unwrap();
 }
 
 struct UpdatedCommandRunner {
@@ -311,34 +306,23 @@ fn assert_needs_deploy(_execution: &Execution<NeedsDeploy>) {}
 
 #[test]
 fn updated_pull_returns_execution_ready_for_deployment() {
-    let path = std::env::temp_dir().join("rs_repo_manager_updated_ready_for_deployment");
+    let directory = TestDirectory::new("updated_ready_for_deployment");
 
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
-
-    let execution = Execution::<NeedsPull>::new(&path).unwrap();
+    let execution = Execution::<NeedsPull>::new(directory.path()).unwrap();
     let runner = UpdatedCommandRunner::new();
 
     let outcome = execution.pull(&runner).unwrap();
 
     match outcome {
-        PullOutcome::Updated(execution) => {
-            assert_needs_deploy(&execution);
-        }
-        PullOutcome::UpToDate => {
-            panic!("expected repository to be updated");
-        }
+        PullOutcome::Updated(execution) => assert_needs_deploy(&execution),
+        PullOutcome::UpToDate => panic!("expected repository to be updated"),
     }
-
-    fs::remove_dir_all(&path).unwrap();
 }
 
 #[test]
 fn deploy_runs_docker_compose_up_in_repository_directory() {
-    let path = std::env::temp_dir().join("rs_repo_manager_deploy_runs_compose_up");
-
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
+    let directory = TestDirectory::new("deploy_runs_compose_up");
+    let path = directory.path().to_path_buf();
 
     let execution = Execution::<NeedsDeploy> {
         state: PhantomData,
@@ -361,16 +345,12 @@ fn deploy_runs_docker_compose_up_in_repository_directory() {
     assert_eq!(commands[0].program, "docker");
     assert_eq!(commands[0].args, vec!["compose", "up", "-d", "--build"]);
     assert_eq!(commands[0].directory, path);
-
-    fs::remove_dir_all(&path).unwrap();
 }
 
 #[test]
 fn deploy_runs_compose_down_before_up_when_enabled() {
-    let path = std::env::temp_dir().join("rs_repo_manager_deploy_runs_compose_down");
-
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
+    let directory = TestDirectory::new("deploy_runs_compose_down");
+    let path = directory.path().to_path_buf();
 
     let execution = Execution::<NeedsDeploy> {
         state: PhantomData,
@@ -378,7 +358,6 @@ fn deploy_runs_compose_down_before_up_when_enabled() {
     };
 
     let runner = FakeCommandRunner::new();
-
     let plan = DeploymentPlan {
         compose_down: true,
         after_pull: vec![],
@@ -391,24 +370,17 @@ fn deploy_runs_compose_down_before_up_when_enabled() {
     let commands = runner.commands.borrow();
 
     assert_eq!(commands.len(), 2);
-
     assert_eq!(commands[0].program, "docker");
     assert_eq!(commands[0].args, vec!["compose", "down"]);
-
     assert_eq!(commands[1].program, "docker");
     assert_eq!(commands[1].args, vec!["compose", "up", "-d", "--build"]);
-
-    assert!(commands.iter().all(|command| { command.directory == path }));
-
-    fs::remove_dir_all(&path).unwrap();
+    assert!(commands.iter().all(|command| command.directory == path));
 }
 
 #[test]
 fn deploy_runs_after_pull_commands_before_compose_down() {
-    let path = std::env::temp_dir().join("rs_repo_manager_after_pull_before_down");
-
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
+    let directory = TestDirectory::new("after_pull_before_down");
+    let path = directory.path().to_path_buf();
 
     let execution = Execution::<NeedsDeploy> {
         state: PhantomData,
@@ -416,7 +388,6 @@ fn deploy_runs_after_pull_commands_before_compose_down() {
     };
 
     let runner = FakeCommandRunner::new();
-
     let plan = DeploymentPlan {
         after_pull: vec![CommandSpec {
             program: "echo".into(),
@@ -432,28 +403,19 @@ fn deploy_runs_after_pull_commands_before_compose_down() {
     let commands = runner.commands.borrow();
 
     assert_eq!(commands.len(), 3);
-
     assert_eq!(commands[0].program, "echo");
     assert_eq!(commands[0].args, vec!["hello"]);
-
     assert_eq!(commands[1].program, "docker");
     assert_eq!(commands[1].args, vec!["compose", "down"]);
-
     assert_eq!(commands[2].program, "docker");
     assert_eq!(commands[2].args, vec!["compose", "up", "-d", "--build"]);
-
-    assert!(commands.iter().all(|command| { command.directory == path }));
-
-    fs::remove_dir_all(&path).unwrap();
+    assert!(commands.iter().all(|command| command.directory == path));
 }
 
 #[test]
 fn deploy_runs_before_up_commands_after_compose_down() {
-    let path = std::env::temp_dir()
-        .join("rs_repo_manager_before_up_after_down");
-
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
+    let directory = TestDirectory::new("before_up_after_down");
+    let path = directory.path().to_path_buf();
 
     let execution = Execution::<NeedsDeploy> {
         state: PhantomData,
@@ -461,16 +423,13 @@ fn deploy_runs_before_up_commands_after_compose_down() {
     };
 
     let runner = FakeCommandRunner::new();
-
     let plan = DeploymentPlan {
         after_pull: vec![],
         compose_down: true,
-        before_up: vec![
-            CommandSpec {
-                program: "echo".into(),
-                args: vec!["before-up".into()],
-            },
-        ],
+        before_up: vec![CommandSpec {
+            program: "echo".into(),
+            args: vec!["before-up".into()],
+        }],
         after_up: vec![],
     };
 
@@ -479,37 +438,17 @@ fn deploy_runs_before_up_commands_after_compose_down() {
     let commands = runner.commands.borrow();
 
     assert_eq!(commands.len(), 3);
-
-    assert_eq!(
-        commands[0].args,
-        vec!["compose", "down"]
-    );
-
+    assert_eq!(commands[0].args, vec!["compose", "down"]);
     assert_eq!(commands[1].program, "echo");
-    assert_eq!(
-        commands[1].args,
-        vec!["before-up"]
-    );
-
-    assert_eq!(
-        commands[2].args,
-        vec!["compose", "up", "-d", "--build"]
-    );
-
-    assert!(commands.iter().all(|command| {
-        command.directory == path
-    }));
-
-    fs::remove_dir_all(&path).unwrap();
+    assert_eq!(commands[1].args, vec!["before-up"]);
+    assert_eq!(commands[2].args, vec!["compose", "up", "-d", "--build"]);
+    assert!(commands.iter().all(|command| command.directory == path));
 }
 
 #[test]
 fn deploy_runs_after_up_commands_after_compose_up() {
-    let path = std::env::temp_dir()
-        .join("rs_repo_manager_after_up");
-
-    let _ = fs::remove_dir_all(&path);
-    fs::create_dir_all(&path).unwrap();
+    let directory = TestDirectory::new("after_up");
+    let path = directory.path().to_path_buf();
 
     let execution = Execution::<NeedsDeploy> {
         state: PhantomData,
@@ -517,17 +456,14 @@ fn deploy_runs_after_up_commands_after_compose_up() {
     };
 
     let runner = FakeCommandRunner::new();
-
     let plan = DeploymentPlan {
         after_pull: vec![],
         compose_down: false,
         before_up: vec![],
-        after_up: vec![
-            CommandSpec {
-                program: "echo".into(),
-                args: vec!["after-up".into()],
-            },
-        ],
+        after_up: vec![CommandSpec {
+            program: "echo".into(),
+            args: vec!["after-up".into()],
+        }],
     };
 
     execution.deploy(&runner, &plan).unwrap();
@@ -535,22 +471,9 @@ fn deploy_runs_after_up_commands_after_compose_up() {
     let commands = runner.commands.borrow();
 
     assert_eq!(commands.len(), 2);
-
     assert_eq!(commands[0].program, "docker");
-    assert_eq!(
-        commands[0].args,
-        vec!["compose", "up", "-d", "--build"]
-    );
-
+    assert_eq!(commands[0].args, vec!["compose", "up", "-d", "--build"]);
     assert_eq!(commands[1].program, "echo");
-    assert_eq!(
-        commands[1].args,
-        vec!["after-up"]
-    );
-
-    assert!(commands.iter().all(|command| {
-        command.directory == path
-    }));
-
-    fs::remove_dir_all(&path).unwrap();
+    assert_eq!(commands[1].args, vec!["after-up"]);
+    assert!(commands.iter().all(|command| command.directory == path));
 }
