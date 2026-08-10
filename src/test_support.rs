@@ -122,3 +122,44 @@ impl CommandRunner for UpdatedCommandRunner {
         })
     }
 }
+
+pub struct GitUpdatedCommandRunner {
+    pub commands: RefCell<Vec<RecordedCommand>>,
+    invocation: RefCell<usize>,
+}
+
+impl GitUpdatedCommandRunner {
+    pub fn new() -> Self {
+        Self {
+            commands: RefCell::new(Vec::new()),
+            invocation: RefCell::new(0),
+        }
+    }
+}
+
+impl CommandRunner for GitUpdatedCommandRunner {
+    fn run(&self, command: &CommandSpec, directory: &Path) -> Result<CommandOutput, CommandError> {
+        self.commands.borrow_mut().push(RecordedCommand {
+            program: command.program.clone(),
+            args: command.args.clone(),
+            directory: directory.to_path_buf(),
+        });
+
+        let mut invocation = self.invocation.borrow_mut();
+
+        let stdout = match *invocation {
+            0 => "abc123\n", // HEAD before pull
+            1 => "",         // git pull
+            2 => "def456\n", // HEAD after pull
+            _ => "",         // docker commands
+        };
+
+        *invocation += 1;
+
+        Ok(CommandOutput {
+            status: Some(0),
+            stdout: stdout.into(),
+            stderr: String::new(),
+        })
+    }
+}
