@@ -1,38 +1,10 @@
 use super::*;
-use std::{cell::RefCell, path::Path};
+use std::path::Path;
 
 use crate::{
     command::{CommandError, CommandOutput, CommandRunner, CommandSpec},
-    test_support::{RecordedCommand, TestDirectory, UpToDateCommandRunner, UpdatedCommandRunner},
+    test_support::{FakeCommandRunner, FakeRepositoryState, TestDirectory},
 };
-
-struct FakeCommandRunner {
-    commands: RefCell<Vec<RecordedCommand>>,
-}
-
-impl FakeCommandRunner {
-    fn new() -> Self {
-        Self {
-            commands: RefCell::new(Vec::new()),
-        }
-    }
-}
-
-impl CommandRunner for FakeCommandRunner {
-    fn run(&self, command: &CommandSpec, directory: &Path) -> Result<CommandOutput, CommandError> {
-        self.commands.borrow_mut().push(RecordedCommand {
-            program: command.program.clone(),
-            args: command.args.clone(),
-            directory: directory.to_path_buf(),
-        });
-
-        Ok(CommandOutput {
-            status: Some(0),
-            stdout: String::new(),
-            stderr: String::new(),
-        })
-    }
-}
 
 #[test]
 fn new_accepts_existing_directory() {
@@ -59,7 +31,7 @@ fn pull_runs_git_pull_in_repository_directory() {
     let path = directory.path().to_path_buf();
 
     let execution = Execution::<NeedsPull>::new(&path).unwrap();
-    let runner = FakeCommandRunner::new();
+    let runner = FakeCommandRunner::new([FakeRepositoryState::up_to_date(&path)]);
 
     execution.pull(&runner).unwrap();
 
@@ -139,7 +111,7 @@ fn pull_reads_head_before_git_pull() {
     let directory = TestDirectory::new("pull_reads_head_before_pull");
 
     let execution = Execution::<NeedsPull>::new(directory.path()).unwrap();
-    let runner = FakeCommandRunner::new();
+    let runner = FakeCommandRunner::new([FakeRepositoryState::up_to_date(directory.path())]);
 
     execution.pull(&runner).unwrap();
 
@@ -159,7 +131,7 @@ fn pull_reads_head_after_git_pull() {
     let directory = TestDirectory::new("pull_reads_head_after_pull");
 
     let execution = Execution::<NeedsPull>::new(directory.path()).unwrap();
-    let runner = FakeCommandRunner::new();
+    let runner = FakeCommandRunner::new([FakeRepositoryState::up_to_date(directory.path())]);
 
     execution.pull(&runner).unwrap();
 
@@ -177,7 +149,7 @@ fn pull_reports_up_to_date_when_head_does_not_change() {
     let directory = TestDirectory::new("pull_reports_up_to_date");
 
     let execution = Execution::<NeedsPull>::new(directory.path()).unwrap();
-    let runner = UpToDateCommandRunner::new();
+    let runner = FakeCommandRunner::new([FakeRepositoryState::up_to_date(directory.path())]);
 
     let result = execution.pull(&runner).unwrap();
 
@@ -191,7 +163,7 @@ fn updated_pull_returns_execution_ready_for_deployment() {
     let directory = TestDirectory::new("updated_ready_for_deployment");
 
     let execution = Execution::<NeedsPull>::new(directory.path()).unwrap();
-    let runner = UpdatedCommandRunner::new();
+    let runner = FakeCommandRunner::new([FakeRepositoryState::updated(directory.path())]);
 
     let outcome = execution.pull(&runner).unwrap();
 
@@ -211,7 +183,7 @@ fn deploy_runs_docker_compose_up_in_repository_directory() {
         directory: path.clone(),
     };
 
-    let runner = FakeCommandRunner::new();
+    let runner = FakeCommandRunner::empty();
     let fake_plan = DeploymentPlan {
         compose_down: false,
         after_pull: vec![],
@@ -239,7 +211,7 @@ fn deploy_runs_compose_down_before_up_when_enabled() {
         directory: path.clone(),
     };
 
-    let runner = FakeCommandRunner::new();
+    let runner = FakeCommandRunner::empty();
     let plan = DeploymentPlan {
         compose_down: true,
         after_pull: vec![],
@@ -269,7 +241,7 @@ fn deploy_runs_after_pull_commands_before_compose_down() {
         directory: path.clone(),
     };
 
-    let runner = FakeCommandRunner::new();
+    let runner = FakeCommandRunner::empty();
     let plan = DeploymentPlan {
         after_pull: vec![CommandSpec {
             program: "echo".into(),
@@ -304,7 +276,7 @@ fn deploy_runs_before_up_commands_after_compose_down() {
         directory: path.clone(),
     };
 
-    let runner = FakeCommandRunner::new();
+    let runner = FakeCommandRunner::empty();
     let plan = DeploymentPlan {
         after_pull: vec![],
         compose_down: true,
@@ -337,7 +309,7 @@ fn deploy_runs_after_up_commands_after_compose_up() {
         directory: path.clone(),
     };
 
-    let runner = FakeCommandRunner::new();
+    let runner = FakeCommandRunner::empty();
     let plan = DeploymentPlan {
         after_pull: vec![],
         compose_down: false,
