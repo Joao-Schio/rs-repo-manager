@@ -6,7 +6,7 @@ pub mod tests;
 use crate::{
     command::CommandRunner,
     execution::{
-        DeploymentPlan, Execution, NeedsPull, PullOutcome, execution_error::ExecutionError,
+        DeploymentPlan, execution_error::ExecutionError,
     },
 };
 
