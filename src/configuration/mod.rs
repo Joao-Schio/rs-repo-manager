@@ -72,8 +72,9 @@ impl Configuration {
 
         Ok(Self::parse(&json)?)
     }
-    pub fn parse(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
+    pub fn parse(json: &str) -> Result<Self, ConfigurationError> {
+        let res: Self = serde_json::from_str(json)?;
+        Ok(res)
     }
 }
 
