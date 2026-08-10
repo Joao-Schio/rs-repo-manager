@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -38,28 +39,67 @@ impl Drop for TestDirectory {
         let _ = fs::remove_dir_all(&self.path);
     }
 }
+
 #[derive(Debug)]
-pub struct RecordedCommand {
-    pub program: String,
-    pub args: Vec<String>,
-    pub directory: PathBuf,
+pub(crate) struct RecordedCommand {
+    pub(crate) program: String,
+    pub(crate) args: Vec<String>,
+    pub(crate) directory: PathBuf,
 }
 
-pub struct UpToDateCommandRunner {
-    pub commands: RefCell<Vec<RecordedCommand>>,
-    pub invocation: RefCell<usize>,
+pub(crate) struct FakeRepositoryState {
+    directory: PathBuf,
+    head_before: String,
+    head_after: String,
+    pulled: bool,
 }
 
-impl UpToDateCommandRunner {
-    pub fn new() -> Self {
+impl FakeRepositoryState {
+    pub(crate) fn up_to_date(directory: impl Into<PathBuf>) -> Self {
         Self {
-            commands: RefCell::new(Vec::new()),
-            invocation: RefCell::new(0),
+            directory: directory.into(),
+            head_before: "abc123".into(),
+            head_after: "abc123".into(),
+            pulled: false,
+        }
+    }
+
+    pub(crate) fn updated(directory: impl Into<PathBuf>) -> Self {
+        Self {
+            directory: directory.into(),
+            head_before: "abc123".into(),
+            head_after: "def456".into(),
+            pulled: false,
         }
     }
 }
 
-impl CommandRunner for UpToDateCommandRunner {
+pub(crate) struct FakeCommandRunner {
+    pub(crate) commands: RefCell<Vec<RecordedCommand>>,
+    repositories: RefCell<HashMap<PathBuf, FakeRepositoryState>>,
+}
+
+impl FakeCommandRunner {
+    pub(crate) fn new(
+        repositories: impl IntoIterator<Item = FakeRepositoryState>,
+    ) -> Self {
+        let repositories = repositories
+            .into_iter()
+            .map(|state| (state.directory.clone(), state))
+            .collect();
+
+        Self {
+            commands: RefCell::new(Vec::new()),
+            repositories: RefCell::new(repositories),
+        }
+    }
+
+    pub(crate) fn empty() -> Self {
+        Self::new(std::iter::empty())
+    }
+}
+
+impl CommandRunner for FakeCommandRunner {
     fn run(&self, command: &CommandSpec, directory: &Path) -> Result<CommandOutput, CommandError> {
         self.commands.borrow_mut().push(RecordedCommand {
             program: command.program.clone(),
@@ -67,98 +107,43 @@ impl CommandRunner for UpToDateCommandRunner {
             directory: directory.to_path_buf(),
         });
 
-        let mut invocation = self.invocation.borrow_mut();
+        if command.program == "git" && command.args == vec!["rev-parse", "HEAD"] {
+            let repositories = self.repositories.borrow();
+            let repository = repositories
+                .get(directory)
+                .expect("missing fake repository state");
 
-        let stdout = match *invocation {
-            0 => "abc123\n",
-            1 => "",
-            2 => "abc123\n",
-            _ => panic!("unexpected command"),
-        };
+            let stdout = if repository.pulled {
+                &repository.head_after
+            } else {
+                &repository.head_before
+            };
 
-        *invocation += 1;
-
-        Ok(CommandOutput {
-            status: Some(0),
-            stdout: stdout.into(),
-            stderr: String::new(),
-        })
-    }
-}
-
-pub struct UpdatedCommandRunner {
-    pub invocation: RefCell<usize>,
-}
-
-impl UpdatedCommandRunner {
-    pub fn new() -> Self {
-        Self {
-            invocation: RefCell::new(0),
+            return Ok(CommandOutput {
+                status: Some(0),
+                stdout: format!("{stdout}\n"),
+                stderr: String::new(),
+            });
         }
-    }
-}
 
-impl CommandRunner for UpdatedCommandRunner {
-    fn run(
-        &self,
-        _command: &CommandSpec,
-        _directory: &Path,
-    ) -> Result<CommandOutput, CommandError> {
-        let mut invocation = self.invocation.borrow_mut();
+        if command.program == "git" && command.args == vec!["pull"] {
+            let mut repositories = self.repositories.borrow_mut();
+            let repository = repositories
+                .get_mut(directory)
+                .expect("missing fake repository state");
 
-        let stdout = match *invocation {
-            0 => "abc123\n",
-            1 => "",
-            2 => "def456\n",
-            _ => panic!("unexpected command"),
-        };
+            repository.pulled = true;
 
-        *invocation += 1;
-
-        Ok(CommandOutput {
-            status: Some(0),
-            stdout: stdout.into(),
-            stderr: String::new(),
-        })
-    }
-}
-
-pub struct GitUpdatedCommandRunner {
-    pub commands: RefCell<Vec<RecordedCommand>>,
-    invocation: RefCell<usize>,
-}
-
-impl GitUpdatedCommandRunner {
-    pub fn new() -> Self {
-        Self {
-            commands: RefCell::new(Vec::new()),
-            invocation: RefCell::new(0),
+            return Ok(CommandOutput {
+                status: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            });
         }
-    }
-}
-
-impl CommandRunner for GitUpdatedCommandRunner {
-    fn run(&self, command: &CommandSpec, directory: &Path) -> Result<CommandOutput, CommandError> {
-        self.commands.borrow_mut().push(RecordedCommand {
-            program: command.program.clone(),
-            args: command.args.clone(),
-            directory: directory.to_path_buf(),
-        });
-
-        let mut invocation = self.invocation.borrow_mut();
-
-        let stdout = match *invocation {
-            0 => "abc123\n", // HEAD before pull
-            1 => "",         // git pull
-            2 => "def456\n", // HEAD after pull
-            _ => "",         // docker commands
-        };
-
-        *invocation += 1;
 
         Ok(CommandOutput {
             status: Some(0),
-            stdout: stdout.into(),
+            stdout: String::new(),
             stderr: String::new(),
         })
     }
