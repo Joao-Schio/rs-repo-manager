@@ -1,7 +1,7 @@
 # rs-repo-manager
 
 [![Cargo test](https://github.com/Joao-Schio/rs-repo-manager/actions/workflows/test.yml/badge.svg)](https://github.com/Joao-Schio/rs-repo-manager/actions/workflows/test.yml)
-[![codecov](https://codecov.io/gh/Joao-Schio/rs-repo-manager/branch/main/graph/badge.svg)](https://codecov.io/gh/Joao-Schio/rs-repo-manager)
+[![Coverage](.github/badges/coverage.svg)](https://github.com/Joao-Schio/rs-repo-manager/actions/workflows/coverage.yml)
 
 A simple project for managing Docker-based repositories running on my Raspberry Pi.
 
